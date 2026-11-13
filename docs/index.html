@@ -126,16 +126,16 @@
     <p class="lead">界面由程序自身离屏渲染生成，不是设计稿。</p>
     <figure class="sticker shot">
       <img src="./screenshot.png" alt="whack-a-menu 主界面：带橘猫图标、台词气泡和右键菜单项清单">
-      <figcaption>主界面（搞怪模式）：每一行都是「复选框 + 真实图标 + 名称 + 厂商 + 来源 + 标签」。</figcaption>
+      <figcaption>主界面：每一行都是「复选框 + 真实图标 + 名称 + 厂商 + 来源 + 标签」，左侧按 Explorer 的真实作用域分类。</figcaption>
     </figure>
     <div class="shots-2">
       <figure class="sticker shot">
-        <img src="./screenshot-serious.png" alt="正经模式界面">
-        <figcaption>「正经」模式：一键收起台词与玩梗文案。</figcaption>
+        <img src="./logo-sizes.png" alt="图标在不同尺寸下的显示效果">
+        <figcaption>小图标：64px 以下裁成橘猫大头照，任务栏里也认得出。</figcaption>
       </figure>
       <figure class="sticker shot">
         <img src="./about.png" alt="关于对话框">
-        <figcaption>「关于」框：大图、版本、协议与记录目录。</figcaption>
+        <figcaption>「关于」框：大图、版本、协议、检查更新与记录目录。</figcaption>
       </figure>
     </div>
   </section>
@@ -144,7 +144,7 @@
     <h2>使用教程</h2>
     <p class="lead">从下载到恢复，一共五步。</p>
     <div class="sticker step"><div class="num">1</div><div><b>下载并运行</b><p>从 <a href="https://github.com/KyuuKyuuStone/whack-a-menu/releases/latest">Releases</a> 下载 <code>ContextMenuCleaner.exe</code>，双击即可，无需安装。建议第一次「以管理员身份运行」——HKLM 里的项和 Win11 现代组件需要管理员权限才能清理。</p></div></div>
-    <div class="sticker step"><div class="num">2</div><div><b>找到想清掉的项</b><p>打开后自动扫描，列出所有右键菜单项。用顶部搜索框按名称 / 厂商 / 注册表路径查找，或按「文件右键 / 文件夹右键 / 桌面空白处 / Win11 组件」分类筛选。勾上「仅看第三方」可以跳过系统项。</p></div></div>
+    <div class="sticker step"><div class="num">2</div><div><b>找到想清掉的项</b><p>打开后自动扫描，列出所有右键菜单项。用顶部搜索框按名称 / 厂商 / 注册表路径查找，或按左侧分类筛选：所有文件、图片 / 影音、文档 / 压缩包、文件夹、桌面 / 空白处、磁盘 / 驱动器、快捷方式、Win11 组件。分类对应 Explorer 里真正会弹出该项的位置，例如「右键一张照片才有」的项归在图片 / 影音。勾上「仅看第三方」可以跳过系统项。已经请走的项不会混在这里，只出现在「已隐藏」。</p></div></div>
     <div class="sticker step"><div class="num">3</div><div><b>勾选 → 点「请走选中项」</b><p>确认弹窗会列出要处理的项。清理采用可逆隐藏，不删除注册表键；系统内置项被识别并加锁，强行勾选会二次警告。</p></div></div>
     <div class="sticker step"><div class="num">4</div><div><b>点「重启资源管理器」立即生效</b><p>菜单缓存由 Explorer 持有，重启后任务栏和桌面会短暂刷新，不会关闭你打开的程序窗口。也可以注销 / 重启代替。</p></div></div>
     <div class="sticker step"><div class="num">5</div><div><b>后悔了：切到「已隐藏」→ 勾选 → 点「放回来」</b><p>所有操作都记录在 <code>%LOCALAPPDATA%\ContextMenuCleaner\hidden.xml</code>，即使程序被移动或重装也能恢复。想彻底退场，先「恢复全部」再删除 exe 即可。</p></div></div>

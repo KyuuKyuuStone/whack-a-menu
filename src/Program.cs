@@ -17,7 +17,7 @@ namespace ContextMenuCleaner
     internal static class Program
     {
         private const string MutexName = "Local\\ContextMenuCleaner_SingleInstance_v1";
-        public const string Version = "1.5.0";
+        public const string Version = "1.6.0";
 
         [STAThread]
         private static int Main(string[] args)
@@ -35,8 +35,6 @@ namespace ContextMenuCleaner
                                    System.Globalization.CultureInfo.InvariantCulture, out parsed))
                     Theme.OverrideScale(parsed);
             }
-
-            if (HasArg(args, "--serious")) Theme.Quirky = false;
 
             string renderPath = GetArgValue(args, "--render");
             if (!string.IsNullOrEmpty(renderPath))
@@ -56,7 +54,6 @@ namespace ContextMenuCleaner
                 Console.WriteLine("  --about <png路径>  离屏渲染「关于」框（验证嵌入的吉祥物大图与排版）");
                 Console.WriteLine("  --roundtrip  用临时 HKCU 测试键验证隐藏/恢复可逆（结束自动清理）");
                 Console.WriteLine("  --scale <倍数>  覆盖自动 DPI 缩放（调试/文档截图用，如 1.5）");
-                Console.WriteLine("  --serious       关闭搞怪模式（配合 --render 生成正经版截图）");
                 Console.WriteLine("  --check-update  查询 GitHub Releases 最新版本（只读，不修改任何东西）");
                 Console.WriteLine("  --elevated   内部使用：管理员重启后恢复勾选状态");
                 return 0;

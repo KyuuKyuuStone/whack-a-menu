@@ -12,6 +12,10 @@ namespace ContextMenuCleaner.Models
     }
 
     /// <summary>Which right-click target the entry belongs to.</summary>
+    /// <remarks>
+    /// Numeric values are persisted in hidden.xml. Keep 0-8 stable and only append
+    /// new file-type scopes, otherwise old recovery records would be misclassified.
+    /// </remarks>
     public enum ScopeKind
     {
         File = 0,
@@ -22,7 +26,13 @@ namespace ContextMenuCleaner.Models
         Drive = 5,
         Shortcut = 6,
         Modern = 7,
-        Other = 8
+        Other = 8,
+        Image = 9,
+        Video = 10,
+        Audio = 11,
+        Document = 12,
+        Archive = 13,
+        OtherType = 14
     }
 
     public class ContextMenuItem
@@ -71,6 +81,12 @@ namespace ContextMenuCleaner.Models
                     case ScopeKind.Drive: return "磁盘";
                     case ScopeKind.Shortcut: return "快捷方式";
                     case ScopeKind.Modern: return "现代菜单";
+                    case ScopeKind.Image: return "图片文件";
+                    case ScopeKind.Video: return "视频文件";
+                    case ScopeKind.Audio: return "音频文件";
+                    case ScopeKind.Document: return "文档 / 文本";
+                    case ScopeKind.Archive: return "压缩包";
+                    case ScopeKind.OtherType: return "其他文件类型";
                     default: return "其他";
                 }
             }

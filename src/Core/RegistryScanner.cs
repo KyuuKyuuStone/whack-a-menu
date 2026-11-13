@@ -37,6 +37,27 @@ namespace ContextMenuCleaner.Core
             new TargetDef { Key = "lnkfile",                Scope = ScopeKind.Shortcut }
         };
 
+        // Windows registers per-type menu extensions under
+        // HKCR\SystemFileAssociations\<type> and under the ProgID a file extension
+        // points at (e.g. .jpg -> jpegfile\shell). Scanning only "*" / "Directory"
+        // used to hide all of those, which is why the sidebar felt out of sync
+        // with what Explorer actually shows for an image, a video or a .zip.
+        private static readonly string[] ImageExt =
+        { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".heic", ".tif", ".tiff", ".svg", ".ico", ".psd", ".raw" };
+        private static readonly string[] VideoExt =
+        { ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".mpg", ".mpeg", ".ts" };
+        private static readonly string[] AudioExt =
+        { ".mp3", ".flac", ".wav", ".aac", ".ogg", ".m4a", ".wma", ".ape", ".opus" };
+        private static readonly string[] DocumentExt =
+        { ".txt", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".rtf", ".md", ".csv",
+          ".log", ".ini", ".xml", ".json", ".htm", ".html" };
+        private static readonly string[] ArchiveExt =
+        { ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".cab", ".iso" };
+        private static readonly string[] KnownExtensions =
+        { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".mp4", ".mkv", ".avi", ".mov",
+          ".mp3", ".flac", ".wav", ".txt", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt",
+          ".pptx", ".zip", ".rar", ".7z", ".iso" };
+
         private static readonly HashSet<string> BuiltInVerbs = new HashSet<string>(
             StringComparer.OrdinalIgnoreCase)
         {
@@ -75,6 +96,7 @@ namespace ContextMenuCleaner.Core
                                        "shellex\\ContextMenuHandlers", EntryKind.ComHandler);
                         }
                         ScanPackaged(result, byId, root, hive, classes);
+                        ScanFileTypes(result, byId, root, hive, classes);
                     }
                 }
                 catch (Exception ex)
@@ -127,7 +149,8 @@ namespace ContextMenuCleaner.Core
 
         private static void ScanBranch(ScanResult result, Dictionary<string, ContextMenuItem> byId,
                                        RegistryKey root, string hive, string classes,
-                                       TargetDef target, string subPath, EntryKind kind)
+                                       TargetDef target, string subPath, EntryKind kind,
+                                       bool skipBuiltInVerbs = false)
         {
             string parentPath = classes + "\\" + target.Key + "\\" + subPath;
             RegistryKey parent = null;
@@ -144,6 +167,10 @@ namespace ContextMenuCleaner.Core
 
                 foreach (string name in names)
                 {
+                    // A ProgID's shell contains its default verbs (open/edit/new/
+                    // print). Those are not third-party menu clutter, so skip them
+                    // when scanning per-file-type branches.
+                    if (skipBuiltInVerbs && BuiltInVerbs.Contains(name)) continue;
                     try
                     {
                         using (RegistryKey key = parent.OpenSubKey(name, false))
@@ -218,6 +245,88 @@ namespace ContextMenuCleaner.Core
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Per-file-type context menus. Explorer picks these branches when you
+        /// right-click a photo, a video, a document or an archive, so they need
+        /// their own scopes instead of being lumped together with "all files".
+        /// </summary>
+        private static void ScanFileTypes(ScanResult result, Dictionary<string, ContextMenuItem> byId,
+                                          RegistryKey root, string hive, string classes)
+        {
+            string sfaPath = classes + "\\SystemFileAssociations";
+            try
+            {
+                using (RegistryKey sfa = root.OpenSubKey(sfaPath, false))
+                {
+                    if (sfa != null)
+                    {
+                        foreach (string typeKey in sfa.GetSubKeyNames())
+                        {
+                            ScopeKind scope = ClassifyFileType(typeKey);
+                            // Ignore .exe/.bat/.cmd and other unrelated associations:
+                            // they add hundreds of rows nobody came here to clean.
+                            if (scope == ScopeKind.OtherType) continue;
+                            TargetDef target = new TargetDef
+                            {
+                                Key = "SystemFileAssociations\\" + typeKey,
+                                Scope = scope
+                            };
+                            ScanBranch(result, byId, root, hive, classes, target,
+                                       "shell", EntryKind.ShellVerb, true);
+                            ScanBranch(result, byId, root, hive, classes, target,
+                                       "shellex\\ContextMenuHandlers", EntryKind.ComHandler, true);
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Warnings.Add("文件类型关联：" + ex.Message);
+            }
+
+            // Many apps register their verb under the ProgID (.jpg -> jpegfile\shell)
+            // rather than under the extension key itself.
+            foreach (string ext in KnownExtensions)
+            {
+                try
+                {
+                    string progId = "";
+                    using (RegistryKey extKey = root.OpenSubKey(classes + "\\" + ext, false))
+                    {
+                        if (extKey != null) progId = extKey.GetValue("") as string ?? "";
+                    }
+                    if (progId.Length == 0 || progId.IndexOf('\\') >= 0) continue;
+                    ScopeKind scope = ClassifyFileType(ext + " " + progId);
+                    if (scope == ScopeKind.OtherType) continue;
+                    TargetDef target = new TargetDef { Key = progId, Scope = scope };
+                    ScanBranch(result, byId, root, hive, classes, target,
+                               "shell", EntryKind.ShellVerb, true);
+                    ScanBranch(result, byId, root, hive, classes, target,
+                               "shellex\\ContextMenuHandlers", EntryKind.ComHandler, true);
+                }
+                catch (Exception) { /* one broken ProgID must not stop the scan */ }
+            }
+        }
+
+        private static ScopeKind ClassifyFileType(string token)
+        {
+            string s = (token ?? "").ToLowerInvariant();
+            if (s.Contains("image") || HasAny(s, ImageExt)) return ScopeKind.Image;
+            if (s.Contains("video") || s.Contains("movie") || HasAny(s, VideoExt)) return ScopeKind.Video;
+            if (s.Contains("audio") || s.Contains("sound") || HasAny(s, AudioExt)) return ScopeKind.Audio;
+            if (HasAny(s, ArchiveExt)) return ScopeKind.Archive;
+            if (s.Contains("text") || s.Contains("document") || HasAny(s, DocumentExt))
+                return ScopeKind.Document;
+            return ScopeKind.OtherType;
+        }
+
+        private static bool HasAny(string s, string[] parts)
+        {
+            foreach (string part in parts)
+                if (s.IndexOf(part, StringComparison.Ordinal) >= 0) return true;
+            return false;
         }
 
         private static ContextMenuItem BuildItem(string hive, string registryPath, string keyName,

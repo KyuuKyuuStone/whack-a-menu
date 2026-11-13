@@ -25,7 +25,26 @@ Windows 11 22H2 之后，静态 `shell` verb 若带 `ExplorerCommandHandler`，�
 | `Folder` | 文件夹（含特殊文件夹） |
 | `Drive` | 磁盘驱动器 |
 | `lnkfile` | 快捷方式 (.lnk) |
-| `SystemFileAssociations\*` | 按文件类型（本工具不递归扫描，避免噪音） |
+| `SystemFileAssociations\image` / `video` / `audio` / `text` / `.ext` | 只对某一类文件出现的菜单项 |
+| `<ProgID>` | 扩展名默认值指向的文件类型（如 `.jpg` → `jpegfile`） |
+
+### 2.1 文件类型分支（v1.6.0 起）
+
+只扫「* / Directory / Drive」会漏掉所有「右键一张图片才出现」的项，这正是侧边栏分类
+和系统实际菜单对不上的原因。现在额外枚举：
+
+1. `HKCU/HKLM\...\Classes\SystemFileAssociations\<类型>` 下的子键，按名称归类为
+   图片 / 视频 / 音频 / 文档 / 压缩包；无关类型（`.exe`、`.bat` 等）直接跳过。
+2. 一组常见扩展名读其默认值得到 ProgID，再扫 `<ProgID>\shell` 与
+   `<ProgID>\shellex\ContextMenuHandlers`。
+
+ProgID 的 `open / edit / new / print / printto` 等**默认动词**不算第三方菜单垃圾，
+扫描时跳过，避免清单被几百条「打开(O)」「编辑(E)」淹没。
+
+侧边栏分类与作用域的对应关系：`所有文件` = `*` + `AllFilesystemObjects`，
+`图片 / 影音` = Image + Video + Audio，`文档 / 压缩包` = Document + Archive，
+`文件夹` = Directory + Folder，其余各自独立；`全部项目` 现在包含 Win11 组件。
+`ScopeKind` 的数值会写进 `hidden.xml`，因此新增枚举值一律追加在末尾，0–8 保持不变。
 
 ## 3. 扫描的根键
 

@@ -322,41 +322,68 @@ namespace ContextMenuCleaner.UI
                 int x = r.X, y = r.Y;
                 switch (index)
                 {
-                    case 0: // all: four tiles
+                    case 0: // 全部项目: four tiles
                         g.DrawRectangle(pen, x + 1, y + 2, 6, 6);
                         g.DrawRectangle(pen, x + 11, y + 2, 6, 6);
                         g.DrawRectangle(pen, x + 1, y + 11, 6, 6);
                         g.DrawRectangle(pen, x + 11, y + 11, 6, 6);
                         break;
-                    case 1: // file
+                    case 1: // 所有文件
                         g.DrawRectangle(pen, x + 3, y + 1, 12, 16);
                         g.DrawLine(pen, x + 6, y + 6, x + 12, y + 6);
                         g.DrawLine(pen, x + 6, y + 10, x + 12, y + 10);
                         g.DrawLine(pen, x + 6, y + 14, x + 10, y + 14);
                         break;
-                    case 2: // folder
+                    case 2: // 图片 / 影音: framed picture with a mountain
+                        g.DrawRectangle(pen, x + 1, y + 2, 16, 14);
+                        g.DrawEllipse(pen, x + 11, y + 5, 3, 3);
+                        g.DrawLine(pen, x + 2, y + 14, x + 7, y + 9);
+                        g.DrawLine(pen, x + 7, y + 9, x + 10, y + 12);
+                        g.DrawLine(pen, x + 10, y + 12, x + 16, y + 7);
+                        break;
+                    case 3: // 文档 / 压缩包: sheet with folded corner
+                        g.DrawRectangle(pen, x + 3, y + 1, 11, 16);
+                        g.DrawLine(pen, x + 10, y + 1, x + 14, y + 5);
+                        g.DrawLine(pen, x + 14, y + 5, x + 10, y + 5);
+                        g.DrawLine(pen, x + 10, y + 5, x + 10, y + 1);
+                        g.DrawLine(pen, x + 6, y + 10, x + 11, y + 10);
+                        g.DrawLine(pen, x + 6, y + 13, x + 11, y + 13);
+                        break;
+                    case 4: // 文件夹
                         g.DrawRectangle(pen, x + 1, y + 5, 16, 11);
                         g.DrawLine(pen, x + 1, y + 5, x + 1, y + 3);
                         g.DrawLine(pen, x + 1, y + 3, x + 7, y + 3);
                         g.DrawLine(pen, x + 7, y + 3, x + 9, y + 5);
                         break;
-                    case 3: // desktop / background
+                    case 5: // 桌面 / 空白处
                         g.DrawRectangle(pen, x + 1, y + 2, 16, 12);
                         g.DrawLine(pen, x + 4, y + 16, x + 14, y + 16);
                         g.DrawLine(pen, x + 9, y + 14, x + 9, y + 16);
                         break;
-                    case 4: // drive / shortcut
-                        g.DrawEllipse(pen, x + 2, y + 3, 14, 12);
-                        g.DrawEllipse(pen, x + 6, y + 7, 6, 4);
+                    case 6: // 磁盘 / 驱动器
+                        g.DrawRectangle(pen, x + 1, y + 4, 16, 11);
+                        g.DrawEllipse(pen, x + 11, y + 8, 3, 3);
+                        g.DrawLine(pen, x + 3, y + 12, x + 9, y + 12);
                         break;
-                    case 5: // modern components
+                    case 7: // 快捷方式: box with an arrow
+                        g.DrawRectangle(pen, x + 2, y + 4, 12, 12);
+                        g.DrawLine(pen, x + 9, y + 2, x + 16, y + 9);
+                        g.DrawLine(pen, x + 16, y + 9, x + 12, y + 9);
+                        g.DrawLine(pen, x + 16, y + 9, x + 16, y + 5);
+                        break;
+                    case 8: // Win11 组件
                         g.DrawRectangle(pen, x + 2, y + 2, 6, 6);
                         g.DrawRectangle(pen, x + 10, y + 2, 6, 6);
                         g.DrawRectangle(pen, x + 2, y + 10, 6, 6);
                         g.DrawLine(pen, x + 10, y + 13, x + 16, y + 13);
                         g.DrawLine(pen, x + 13, y + 10, x + 13, y + 16);
                         break;
-                    default: // hidden / restore
+                    case 9: // 其他 / 未分类
+                        g.DrawEllipse(pen, x + 2, y + 3, 14, 12);
+                        g.DrawLine(pen, x + 6, y + 8, x + 12, y + 8);
+                        g.DrawLine(pen, x + 6, y + 11, x + 10, y + 11);
+                        break;
+                    default: // 已隐藏 / 恢复
                         g.DrawEllipse(pen, x + 2, y + 3, 14, 12);
                         g.DrawLine(pen, x + 1, y + 17, x + 17, y + 1);
                         break;

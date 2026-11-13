@@ -50,11 +50,11 @@ namespace ContextMenuCleaner.UI
         public static readonly Color AccentSoft = Color.FromArgb(0xFF, 0xE1, 0xD5);
 
         /// <summary>
-        /// Master switch for the mascot's antics: speech bubble, rotating one-liners,
-        /// easter eggs and playful toast copy. Turn it off for screenshots you have
-        /// to send to somebody serious.
+        /// There is only one mode: the mascot talks. The "serious" toggle was
+        /// deliberately removed -- no user-facing switch, no CLI flag. Kept as a
+        /// single readonly constant so the playful copy stays in one place.
         /// </summary>
-        public static bool Quirky = true;
+        public static readonly bool Quirky = true;
 
         private const string FontFamily = "Microsoft YaHei UI";
 
@@ -221,10 +221,12 @@ namespace ContextMenuCleaner.UI
         public static void EnableDoubleBuffer(Control control)
         {
             if (SetStyleMethod == null) return;
+            // No ResizeRedraw: with 200+ owner-drawn rows it forced a full repaint
+            // of every control on each WM_SIZE during a drag-resize. The form now
+            // invalidates once when the drag ends (WM_EXITSIZEMOVE).
             ControlStyles styles = ControlStyles.UserPaint |
                                    ControlStyles.AllPaintingInWmPaint |
                                    ControlStyles.OptimizedDoubleBuffer |
-                                   ControlStyles.ResizeRedraw |
                                    ControlStyles.SupportsTransparentBackColor;
             SetStyleMethod.Invoke(control, new object[] { styles, true });
         }
@@ -238,8 +240,10 @@ namespace ContextMenuCleaner.UI
             // Grayscale anti-aliasing: ClearType subpixel rendering requires an opaque
             // background and drops scanlines on buffered / transparent surfaces.
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
-            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
-            g.CompositingQuality = CompositingQuality.HighQuality;
+            // Bilinear is markedly cheaper than bicubic for the 200+ small icons
+            // drawn on every repaint, with no visible difference at 24-40px.
+            g.InterpolationMode = InterpolationMode.HighQualityBilinear;
+            g.CompositingQuality = CompositingQuality.AssumeLinear;
             g.PixelOffsetMode = PixelOffsetMode.HighQuality;
         }
 

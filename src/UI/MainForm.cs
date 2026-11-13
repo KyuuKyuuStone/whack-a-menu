@@ -14,7 +14,13 @@ namespace ContextMenuCleaner.UI
 {
     public class MainForm : Form
     {
-        private enum Category { All = 0, File = 1, Folder = 2, Background = 3, Drive = 4, Modern = 5, Hidden = 6 }
+        // Mirrors Explorer's real right-click targets. The index IS the sidebar
+        // index (NavClicked casts it back), so keep captions in the same order.
+        private enum Category
+        {
+            All = 0, File = 1, Media = 2, Document = 3, Folder = 4,
+            Background = 5, Drive = 6, Shortcut = 7, Modern = 8, Other = 9, Hidden = 10
+        }
 
         private const int TitleHeight = 58;
         private const int SidebarWidth = 208;
@@ -43,7 +49,6 @@ namespace ContextMenuCleaner.UI
         private Panel grip;
         private SearchBox search;
         private ToggleSwitch thirdPartyToggle;
-        private ModernButton btnQuirk;
         private ModernButton btnAbout;
         private ModernButton btnMin;
         private ModernButton btnClose;
@@ -69,6 +74,10 @@ namespace ContextMenuCleaner.UI
         private bool updateChecking;
         private readonly Random rnd = new Random();
         private string mascotLine = "";
+        private string bubbleText = "";
+        private int bubbleTextWidth;
+        private bool sizing;
+        private int lastRowWidth = -1;
 
         private static readonly string[] MascotLines =
         {
@@ -171,13 +180,36 @@ namespace ContextMenuCleaner.UI
         protected override void OnSizeChanged(EventArgs e)
         {
             base.OnSizeChanged(e);
-            ApplyRegion();
+            // Rebuilding the rounded Region allocates a GDI+ path; doing it on every
+            // WM_SIZE while drag-resizing made the window visibly stutter. Defer it
+            // until the mouse is released.
+            if (!sizing) ApplyRegion();
             DoLayout();
         }
+
+        private const int WM_ENTERSIZEMOVE = 0x0231;
+        private const int WM_EXITSIZEMOVE = 0x0232;
+
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == WM_ENTERSIZEMOVE) sizing = true;
+            else if (m.Msg == WM_EXITSIZEMOVE && sizing)
+            {
+                sizing = false;
+                ApplyRegion();
+                DoLayout();
+                Invalidate(true);
+            }
+            base.WndProc(ref m);
+        }
+
+        private Size lastRegionSize;
 
         private void ApplyRegion()
         {
             if (Width <= 0 || Height <= 0) return;
+            if (Region != null && lastRegionSize.Width == Width &&
+                lastRegionSize.Height == Height) return;
             using (GraphicsPath path = Theme.RoundedPath(
                 new Rectangle(0, 0, Width, Height), Theme.S(12)))
             {
@@ -185,6 +217,7 @@ namespace ContextMenuCleaner.UI
                 Region = new Region(path);
                 if (old != null) old.Dispose();
             }
+            lastRegionSize = new Size(Width, Height);
         }
 
         // ------------------------------------------------------------ build UI
@@ -197,13 +230,13 @@ namespace ContextMenuCleaner.UI
             {
                 if (e.Button != MouseButtons.Left) return;
                 int logicalX = (int)(e.X / Theme.Scale);
-                // Poking the mascot always gets a reaction in quirky mode.
-                if (logicalX < 56 && Theme.Quirky)
+                // Poking the mascot always gets a reaction.
+                if (logicalX < 56)
                 {
                     PokeMascot();
                     return;
                 }
-                if (logicalX < Theme.LW(titleBar) - 282) DragWindow();
+                if (logicalX < Theme.LW(titleBar) - 190) DragWindow();
             };
             Controls.Add(titleBar);
 
@@ -262,22 +295,6 @@ namespace ContextMenuCleaner.UI
 
         private void BuildTitleButtons()
         {
-            btnQuirk = new ModernButton
-            {
-                Text = Theme.Quirky ? "搞怪 ON" : "正经",
-                Style = ButtonStyle.Ghost, Width = 76, Height = 30
-            };
-            btnQuirk.Click += delegate
-            {
-                Theme.Quirky = !Theme.Quirky;
-                btnQuirk.Text = Theme.Quirky ? "搞怪 ON" : "正经";
-                titleBar.Invalidate();
-                sidebar.Invalidate();
-                rowsBox.Invalidate();
-                ShowToast(Theme.Quirky ? "搞怪模式：橘座回来了" : "正经模式：橘座闭嘴了");
-            };
-            titleBar.Controls.Add(btnQuirk);
-
             btnAbout = new ModernButton { Text = "关于", Style = ButtonStyle.Ghost, Width = 60, Height = 30 };
             btnAbout.Click += delegate
             {
@@ -302,8 +319,17 @@ namespace ContextMenuCleaner.UI
         {
             string[] captions =
             {
-                "全部项目", "文件右键", "文件夹右键", "桌面 / 空白处",
-                "磁盘 / 快捷", "Win11 组件", "已隐藏"
+                "全部项目",       // All
+                "所有文件",       // File + AllFilesystemObjects
+                "图片 / 影音",    // image + video + audio associations
+                "文档 / 压缩包",  // text/document + archive associations
+                "文件夹",         // Directory + Folder
+                "桌面 / 空白处",  // Directory\Background
+                "磁盘 / 驱动器",  // Drive
+                "快捷方式",       // lnkfile
+                "Win11 组件",     // PackagedCom
+                "其他 / 未分类",  // anything else
+                "已隐藏"          // Hidden: the only place hidden items appear
             };
             navItems = new NavItem[captions.Length];
             for (int i = 0; i < captions.Length; i++)
@@ -480,13 +506,12 @@ namespace ContextMenuCleaner.UI
                 Place(listHost, SidebarWidth, listTop, w - SidebarWidth,
                       Math.Max(80, h - FooterHeight - listTop));
 
-                Place(btnQuirk, w - 268, 13, 76, 30);
                 Place(btnAbout, w - 186, 13, 60, 30);
                 Place(btnMin, w - 116, 13, 36, 30);
                 Place(btnClose, w - 72, 13, 36, 30);
 
                 for (int i = 0; i < navItems.Length; i++)
-                    Place(navItems[i], 8, 44 + i * 44, SidebarWidth - 16, 40);
+                    Place(navItems[i], 8, 40 + i * 40, SidebarWidth - 16, 36);
 
                 int searchWidth = Math.Min(340, Math.Max(220, w - SidebarWidth - 520));
                 Place(search, 20, 14, searchWidth, 36);
@@ -513,7 +538,14 @@ namespace ContextMenuCleaner.UI
 
                 rowsBox.Width = listHost.ClientSize.Width;
                 int rowWidth = Math.Max(Theme.S(220), rowsBox.Width - Theme.S(32));
-                foreach (MenuRow row in rows) row.Width = rowWidth;
+                // Setting Width on every one of the 200+ row controls for each
+                // WM_SIZE was the main source of drag-resize stutter. Only do it
+                // when the value actually changed.
+                if (rowWidth != lastRowWidth)
+                {
+                    lastRowWidth = rowWidth;
+                    foreach (MenuRow row in rows) row.Width = rowWidth;
+                }
             }
             finally
             {
@@ -544,11 +576,17 @@ namespace ContextMenuCleaner.UI
                 // rescan, category switch and poke. Ellipsized if the window is narrow.
                 Font bubbleFont = Theme.MakeFont(8.5f, true);
                 int bx = 432;
-                int maxBubble = tw - 282 - bx;
+                int maxBubble = tw - 190 - bx;
                 if (maxBubble >= 170 && !string.IsNullOrEmpty(mascotLine))
                 {
-                    int bw = Math.Min(maxBubble,
-                        Math.Max(230, Theme.Measure(mascotLine, bubbleFont).Width + 32));
+                    // Measuring text allocates a GDI surface; cache it per line
+                    // instead of doing it on every repaint while the window moves.
+                    if (bubbleText != mascotLine)
+                    {
+                        bubbleText = mascotLine;
+                        bubbleTextWidth = Theme.Measure(mascotLine, bubbleFont).Width;
+                    }
+                    int bw = Math.Min(maxBubble, Math.Max(230, bubbleTextWidth + 32));
                     Rectangle bubble = new Rectangle(bx, 12, bw, 30);
                     // Sticker speech bubble: solid navy drop plus a bold outline.
                     Theme.FillRound(e.Graphics, new Rectangle(bx + 3, 15, bw, 30), 15,
@@ -590,7 +628,11 @@ namespace ContextMenuCleaner.UI
             if (Theme.Quirky)
                 Theme.DrawSparkle(e.Graphics, sw - 40, 16, 11, Theme.Accent);
 
-            int bottom = Math.Max(sh - 122, 44 + navItems.Length * 44 + 16);
+            // Eleven categories need vertical room; on a short window we simply
+            // drop the footer note instead of drawing it over the last item.
+            int navBottom = 40 + navItems.Length * 40 + 16;
+            if (sh - navBottom < 108) return;
+            int bottom = Math.Max(sh - 116, navBottom);
             if (Theme.Quirky)
             {
                 Theme.DrawSparkle(e.Graphics, sw - 46, bottom + 2, 12, Theme.Accent);
@@ -605,7 +647,7 @@ namespace ContextMenuCleaner.UI
                 Theme.MakeFont(8f), Theme.TextMuted,
                 new Rectangle(20, bottom + 26, sw - 32, 24));
             Theme.DrawText(e.Graphics,
-                Theme.Quirky ? "v1.5.0 · 橘座：" + CountQuip() : "PolyForm NC · v1.5.0",
+                Theme.Quirky ? "v1.6.0 · 橘座：" + CountQuip() : "PolyForm NC · v1.6.0",
                 Theme.MakeFont(8f), Theme.TextFaint,
                 new Rectangle(20, bottom + 52, sw - 32, 24));
         }
@@ -686,7 +728,7 @@ namespace ContextMenuCleaner.UI
             {
                 // In clean mode, system items and already-hidden items cannot be
                 // processed by the action button -- don't let "全选" select them.
-                if (category != Category.Hidden && (item.IsSystem || item.IsHidden))
+                if (category != Category.Hidden && item.IsSystem)
                 {
                     skipped++;
                     continue;
@@ -712,9 +754,23 @@ namespace ContextMenuCleaner.UI
 
         private void DragWindow()
         {
-            NativeMethods.ReleaseCapture();
-            NativeMethods.SendMessagePtr(Handle, NativeMethods.WM_NCLBUTTONDOWN,
-                                         (IntPtr)NativeMethods.HTCAPTION, IntPtr.Zero);
+            const int WM_SETREDRAW = 0x000B;
+            // WM_NCLBUTTONDOWN enters a synchronous modal move loop. Freeze our
+            // owner-draw repaints for its duration: Windows moves the cached
+            // window bitmap instead of forcing 200+ rows to repaint per frame.
+            NativeMethods.SendMessagePtr(Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
+            try
+            {
+                NativeMethods.ReleaseCapture();
+                NativeMethods.SendMessagePtr(Handle, NativeMethods.WM_NCLBUTTONDOWN,
+                                             (IntPtr)NativeMethods.HTCAPTION, IntPtr.Zero);
+            }
+            finally
+            {
+                NativeMethods.SendMessagePtr(Handle, WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
+                Invalidate(true);
+                Update();
+            }
         }
 
         private string Pick(string[] pool)
@@ -792,16 +848,29 @@ namespace ContextMenuCleaner.UI
 
         private static bool MatchesCategory(ContextMenuItem item, Category cat)
         {
+            // A hidden entry has already been dealt with: it must not keep showing
+            // up in every scope list. Users look for it on the "已隐藏" page.
+            if (cat == Category.Hidden) return item.IsHidden;
+            if (item.IsHidden) return false;
+
             switch (cat)
             {
-                case Category.All: return item.Scope != ScopeKind.Modern;
-                case Category.File: return item.Scope == ScopeKind.File || item.Scope == ScopeKind.AllObjects;
-                case Category.Folder: return item.Scope == ScopeKind.Directory || item.Scope == ScopeKind.Folder;
+                case Category.All: return true;   // "全部" really means all, incl. Win11 components
+                case Category.File: return item.Scope == ScopeKind.File ||
+                                           item.Scope == ScopeKind.AllObjects;
+                case Category.Media: return item.Scope == ScopeKind.Image ||
+                                            item.Scope == ScopeKind.Video ||
+                                            item.Scope == ScopeKind.Audio;
+                case Category.Document: return item.Scope == ScopeKind.Document ||
+                                               item.Scope == ScopeKind.Archive;
+                case Category.Folder: return item.Scope == ScopeKind.Directory ||
+                                             item.Scope == ScopeKind.Folder;
                 case Category.Background: return item.Scope == ScopeKind.Background;
-                case Category.Drive: return item.Scope == ScopeKind.Drive || item.Scope == ScopeKind.Shortcut ||
-                                            item.Scope == ScopeKind.Other;
+                case Category.Drive: return item.Scope == ScopeKind.Drive;
+                case Category.Shortcut: return item.Scope == ScopeKind.Shortcut;
                 case Category.Modern: return item.Scope == ScopeKind.Modern;
-                case Category.Hidden: return item.IsHidden;
+                case Category.Other: return item.Scope == ScopeKind.Other ||
+                                            item.Scope == ScopeKind.OtherType;
                 default: return true;
             }
         }
@@ -833,9 +902,13 @@ namespace ContextMenuCleaner.UI
             List<ContextMenuItem> visible = VisibleItems();
             rowsBox.SuspendLayout();
             rowsBox.Controls.Clear();
+            // Old rows keep their HWND until disposed; hundreds of them piling up
+            // across rescans / category switches made dragging the window sluggish.
+            foreach (MenuRow old in rows) old.Dispose();
             rows.Clear();
 
             int rowWidth = Math.Max(Theme.S(220), rowsBox.Width - Theme.S(32));
+            MenuRow[] created = new MenuRow[visible.Count];
             for (int i = 0; i < visible.Count; i++)
             {
                 MenuRow row = new MenuRow(visible[i]);
@@ -843,9 +916,12 @@ namespace ContextMenuCleaner.UI
                 row.Toggled += RowToggled;
                 row.DoubleClick += RowDoubleClick;
                 row.MouseWheel += ForwardWheel;
-                rowsBox.Controls.Add(row);
+                created[i] = row;
                 rows.Add(row);
             }
+            // One AddRange instead of N Add calls: N layout notifications per
+            // repaint were a large part of the resize stutter.
+            if (created.Length > 0) rowsBox.Controls.AddRange(created);
             rowsBox.Height = Math.Max(listHost.ClientSize.Height,
                                       Theme.S(16 + visible.Count * RowPitch + 12));
             rowsBox.ResumeLayout(false);
@@ -854,7 +930,9 @@ namespace ContextMenuCleaner.UI
             // A vertical scrollbar narrows the client area; re-fit rows to avoid a horizontal one.
             rowsBox.Width = listHost.ClientSize.Width;
             int finalWidth = Math.Max(Theme.S(220), rowsBox.Width - Theme.S(32));
-            foreach (MenuRow row in rows) row.Width = finalWidth;
+            if (finalWidth != rowWidth)
+                foreach (MenuRow row in rows) row.Width = finalWidth;
+            lastRowWidth = finalWidth;
 
             UpdateNavCounts();
             UpdateFooter();
@@ -1236,7 +1314,7 @@ namespace ContextMenuCleaner.UI
                                    Theme.Ink, Theme.PrimarySoft);
                     Theme.DrawSparkle(e.Graphics, 386, 40, 10, Theme.Accent);
                 }
-                Theme.DrawText(e.Graphics, "whack-a-menu  ·  v1.5.0  ·  PolyForm NC",
+                Theme.DrawText(e.Graphics, "whack-a-menu  ·  v1.6.0  ·  PolyForm NC",
                                Theme.MakeFont(8.5f), Theme.TextMuted, new Rectangle(128, 60, 260, 20));
                 if (Theme.Quirky)
                     Theme.DrawText(e.Graphics, "Nine lives, zero patience.",
