@@ -1,0 +1,34 @@
+# Build output (build.ps1 / build.bat place the portable exe here)
+dist/*.exe
+dist/*.pdb
+dist/*.png
+dist/selftest-report.txt
+
+# Local agent state: work logs contain machine paths and private notes
+.workbuddy/
+
+# Local AI-agent skill caches (several IDEs drop their own copy here).
+# These are third-party tooling, NOT part of this project -- never commit them.
+.agents/
+.claude/
+.codebuddy/
+.zcode/
+skills-lock.json
+*.log
+assets/2026-*/
+assets/logo-v*/
+
+# Local state
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.cache
+__pycache__/
+*.pyc
+
+# OS noise
+Thumbs.db
+Desktop.ini
+.DS_Store
