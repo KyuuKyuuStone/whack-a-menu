@@ -46,6 +46,19 @@ ProgID 的 `open / edit / new / print / printto` 等**默认动词**不算第三
 `文件夹` = Directory + Folder，其余各自独立；`全部项目` 现在包含 Win11 组件。
 `ScopeKind` 的数值会写进 `hidden.xml`，因此新增枚举值一律追加在末尾，0–8 保持不变。
 
+### 2.2 同一个软件为什么会扫描出好几条
+
+像 `AABdzCtx`、`MediaInfo` 这类扩展，会在 HKCU / HKLM 的多个作用域各自建一个键
+（`*` / `Directory` / `Drive` / `Directory\Background` / 各种 `SystemFileAssociations\.ext`）。
+它们**不是重复数据**：每个键都得单独写 `ProgrammaticAccessOnly` 或清空 CLSID 才能藏住，
+恢复时也要逐个写回，所以扫描层必须全留着。
+
+界面从 v1.7.0 起默认按软件聚合显示（`Models/SoftwareGroup.cs`），分组 key 依次取
+`BinaryPath` → `Clsid` → `Publisher + Name` → 单条独立成组，避免误合并。
+卡片左侧复选框一次勾选整组，右侧箭头展开逐条明细，「详情」按钮展示程序路径与所有注册位置。
+工具栏「视图·位置」可切回逐条平铺。清理 / 恢复逻辑始终以 `ContextMenuItem.Checked` 为准，
+与显示方式无关。
+
 ## 3. 扫描的根键
 
 ```

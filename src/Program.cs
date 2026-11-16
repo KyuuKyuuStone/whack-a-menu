@@ -17,7 +17,7 @@ namespace ContextMenuCleaner
     internal static class Program
     {
         private const string MutexName = "Local\\ContextMenuCleaner_SingleInstance_v1";
-        public const string Version = "1.6.0";
+        public const string Version = "1.7.0";
 
         [STAThread]
         private static int Main(string[] args)
@@ -41,6 +41,8 @@ namespace ContextMenuCleaner
                 return RenderPreview(renderPath, HasArg(args, "--screen"));
             string aboutPath = GetArgValue(args, "--about");
             if (!string.IsNullOrEmpty(aboutPath)) return RenderAbout(aboutPath);
+            string detailPath = GetArgValue(args, "--detail");
+            if (!string.IsNullOrEmpty(detailPath)) return RenderDetail(detailPath);
             if (HasArg(args, "--roundtrip")) return RunRoundTrip();
             if (HasArg(args, "--selftest")) return RunSelfTest();
             if (HasArg(args, "--check-update")) return RunUpdateCheck();
@@ -52,6 +54,7 @@ namespace ContextMenuCleaner
                 Console.WriteLine("  --render <png路径>  离屏渲染主界面到 PNG（用于文档截图 / UI 自检）");
                 Console.WriteLine("  --screen         配合 --render 额外保存一份真实屏幕截图 *-screen.png");
                 Console.WriteLine("  --about <png路径>  离屏渲染「关于」框（验证嵌入的吉祥物大图与排版）");
+                Console.WriteLine("  --detail <png路径> 离屏渲染「软件详情」框（用真实扫描数据验证排版）");
                 Console.WriteLine("  --roundtrip  用临时 HKCU 测试键验证隐藏/恢复可逆（结束自动清理）");
                 Console.WriteLine("  --scale <倍数>  覆盖自动 DPI 缩放（调试/文档截图用，如 1.5）");
                 Console.WriteLine("  --check-update  查询 GitHub Releases 最新版本（只读，不修改任何东西）");
@@ -203,6 +206,55 @@ namespace ContextMenuCleaner
             catch (Exception ex)
             {
                 Console.WriteLine("关于框渲染失败：" + ex);
+                return 1;
+            }
+        }
+
+        /// <summary>
+        /// Renders the product detail dialog offscreen with real scan data. Picks the
+        /// noisiest product (most registration points) so the multi-entry layout is
+        /// the one being verified.
+        /// </summary>
+        private static int RenderDetail(string path)
+        {
+            try
+            {
+                var store = ContextMenuCleaner.Core.HiddenStore.Load();
+                var scan = ContextMenuCleaner.Core.RegistryScanner.Scan(store);
+                var groups = ContextMenuCleaner.Models.SoftwareGroup.Build(scan.Items);
+                ContextMenuCleaner.Models.SoftwareGroup chosen = null;
+                foreach (var group in groups)
+                {
+                    if (group.Count >= 3) { chosen = group; break; }
+                }
+                if (chosen == null && groups.Count > 0) chosen = groups[0];
+                if (chosen == null)
+                {
+                    Console.WriteLine("没有可渲染的菜单项");
+                    return 1;
+                }
+                using (ContextMenuCleaner.UI.SoftwareDetailDialog dialog =
+                           new ContextMenuCleaner.UI.SoftwareDetailDialog(chosen, null))
+                {
+                    dialog.ShowInTaskbar = false;
+                    dialog.Show();
+                    Application.DoEvents();
+                    System.Threading.Thread.Sleep(150);
+                    dialog.Refresh();
+                    using (Bitmap bitmap = new Bitmap(dialog.Width, dialog.Height))
+                    {
+                        dialog.DrawToBitmap(bitmap, new Rectangle(0, 0, dialog.Width, dialog.Height));
+                        bitmap.Save(path, ImageFormat.Png);
+                    }
+                    dialog.Close();
+                }
+                Console.WriteLine("软件详情预览已生成：" + Path.GetFullPath(path) +
+                                  "（" + chosen.Name + "，" + chosen.Count + " 处注册）");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("详情框渲染失败：" + ex);
                 return 1;
             }
         }

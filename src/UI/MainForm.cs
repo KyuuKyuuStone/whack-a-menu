@@ -32,9 +32,13 @@ namespace ContextMenuCleaner.UI
         private HiddenStore store;
         private ScanResult scan;
         private List<ContextMenuItem> allItems = new List<ContextMenuItem>();
-        private readonly List<MenuRow> rows = new List<MenuRow>();
+        private readonly List<Control> rows = new List<Control>();
         private Category category = Category.All;
         private bool onlyThirdParty;
+        private bool groupBySoftware = true;
+        private readonly HashSet<string> expandedGroups = new HashSet<string>();
+        private int lastGroupCount;
+        private int lastVisibleCount;
         private bool noticeVisible;
         private bool layingOut;
 
@@ -53,6 +57,7 @@ namespace ContextMenuCleaner.UI
         private ModernButton btnMin;
         private ModernButton btnClose;
         private ModernButton btnRefresh;
+        private ModernButton btnView;
         private ModernButton btnSelectAll;
         private ModernButton btnClear;
         private ModernButton btnExport;
@@ -359,6 +364,22 @@ namespace ContextMenuCleaner.UI
             };
             toolbar.Controls.Add(thirdPartyToggle);
 
+            btnView = new ModernButton
+            {
+                Text = "视图·软件", Style = ButtonStyle.Secondary, Width = 92, Height = 32
+            };
+            btnView.Click += delegate
+            {
+                groupBySoftware = !groupBySoftware;
+                btnView.Text = groupBySoftware ? "视图·软件" : "视图·位置";
+                expandedGroups.Clear();
+                RefreshList();
+                ShowToast(groupBySoftware
+                    ? "按软件合并 · 点卡片看它到底是什么"
+                    : "按位置查看 · 每个注册点单独一行");
+            };
+            toolbar.Controls.Add(btnView);
+
             btnRefresh = new ModernButton { Text = "刷新", Style = ButtonStyle.Secondary, Width = 76, Height = 32 };
             btnRefresh.Click += delegate
             {
@@ -513,7 +534,7 @@ namespace ContextMenuCleaner.UI
                 for (int i = 0; i < navItems.Length; i++)
                     Place(navItems[i], 8, 40 + i * 40, SidebarWidth - 16, 36);
 
-                int searchWidth = Math.Min(340, Math.Max(220, w - SidebarWidth - 520));
+                int searchWidth = Math.Min(300, Math.Max(180, w - SidebarWidth - 560));
                 Place(search, 20, 14, searchWidth, 36);
                 int toggleX = 20 + searchWidth + 18;
                 Place(thirdPartyToggle, toggleX, 21, 40, 22);
@@ -523,6 +544,7 @@ namespace ContextMenuCleaner.UI
                 Place(btnClear, right - 66, 16, 66, 32);
                 Place(btnSelectAll, right - 138, 16, 66, 32);
                 Place(btnRefresh, right - 220, 16, 76, 32);
+                Place(btnView, right - 320, 16, 92, 32);
 
                 Place(btnElevate, w - SidebarWidth - 142, 5, 122, 26);
 
@@ -544,7 +566,9 @@ namespace ContextMenuCleaner.UI
                 if (rowWidth != lastRowWidth)
                 {
                     lastRowWidth = rowWidth;
-                    foreach (MenuRow row in rows) row.Width = rowWidth;
+                    foreach (Control row in rows)
+                        row.Width = (groupBySoftware && row is MenuRow)
+                                        ? rowWidth - Theme.S(24) : rowWidth;
                 }
             }
             finally
@@ -647,7 +671,7 @@ namespace ContextMenuCleaner.UI
                 Theme.MakeFont(8f), Theme.TextMuted,
                 new Rectangle(20, bottom + 26, sw - 32, 24));
             Theme.DrawText(e.Graphics,
-                Theme.Quirky ? "v1.6.0 · 橘座：" + CountQuip() : "PolyForm NC · v1.6.0",
+                Theme.Quirky ? "v1.7.0 · 橘座：" + CountQuip() : "PolyForm NC · v1.7.0",
                 Theme.MakeFont(8f), Theme.TextFaint,
                 new Rectangle(20, bottom + 52, sw - 32, 24));
         }
@@ -754,23 +778,14 @@ namespace ContextMenuCleaner.UI
 
         private void DragWindow()
         {
-            const int WM_SETREDRAW = 0x000B;
-            // WM_NCLBUTTONDOWN enters a synchronous modal move loop. Freeze our
-            // owner-draw repaints for its duration: Windows moves the cached
-            // window bitmap instead of forcing 200+ rows to repaint per frame.
-            NativeMethods.SendMessagePtr(Handle, WM_SETREDRAW, IntPtr.Zero, IntPtr.Zero);
-            try
-            {
-                NativeMethods.ReleaseCapture();
-                NativeMethods.SendMessagePtr(Handle, NativeMethods.WM_NCLBUTTONDOWN,
-                                             (IntPtr)NativeMethods.HTCAPTION, IntPtr.Zero);
-            }
-            finally
-            {
-                NativeMethods.SendMessagePtr(Handle, WM_SETREDRAW, (IntPtr)1, IntPtr.Zero);
-                Invalidate(true);
-                Update();
-            }
+            // Do NOT wrap this in WM_SETREDRAW. Freezing redraws makes Windows fall
+            // back to dragging a plain outline, and the outline's bottom/right edge
+            // is left behind on the desktop as a thin black line. The other
+            // optimisations (deferred Region rebuild, AddRange, cached row width,
+            // no ResizeRedraw) are enough to keep the move smooth.
+            NativeMethods.ReleaseCapture();
+            NativeMethods.SendMessagePtr(Handle, NativeMethods.WM_NCLBUTTONDOWN,
+                                         (IntPtr)NativeMethods.HTCAPTION, IntPtr.Zero);
         }
 
         private string Pick(string[] pool)
@@ -900,30 +915,73 @@ namespace ContextMenuCleaner.UI
         private void RefreshList()
         {
             List<ContextMenuItem> visible = VisibleItems();
+            lastVisibleCount = visible.Count;
             rowsBox.SuspendLayout();
             rowsBox.Controls.Clear();
             // Old rows keep their HWND until disposed; hundreds of them piling up
             // across rescans / category switches made dragging the window sluggish.
-            foreach (MenuRow old in rows) old.Dispose();
+            foreach (Control old in rows) old.Dispose();
             rows.Clear();
 
             int rowWidth = Math.Max(Theme.S(220), rowsBox.Width - Theme.S(32));
-            MenuRow[] created = new MenuRow[visible.Count];
-            for (int i = 0; i < visible.Count; i++)
+            List<Control> created = new List<Control>();
+            int slot = 0;
+
+            if (groupBySoftware)
             {
-                MenuRow row = new MenuRow(visible[i]);
-                row.SetBounds(Theme.S(16), Theme.S(8 + i * RowPitch), rowWidth, Theme.S(62));
-                row.Toggled += RowToggled;
-                row.DoubleClick += RowDoubleClick;
-                row.MouseWheel += ForwardWheel;
-                created[i] = row;
-                rows.Add(row);
+                List<SoftwareGroup> groups = SoftwareGroup.Build(visible);
+                lastGroupCount = groups.Count;
+                foreach (SoftwareGroup software in groups)
+                {
+                    SoftwareRow head = new SoftwareRow(software);
+                    head.Expanded = expandedGroups.Contains(software.Key);
+                    head.Toggled += GroupToggled;
+                    head.ExpandToggled += GroupExpandToggled;
+                    head.DetailRequested += GroupDetailRequested;
+                    head.MouseWheel += ForwardWheel;
+                    head.SetBounds(Theme.S(16), Theme.S(8 + slot * RowPitch),
+                                   rowWidth, Theme.S(62));
+                    created.Add(head);
+                    rows.Add(head);
+                    slot++;
+
+                    if (!head.Expanded) continue;
+                    foreach (ContextMenuItem item in software.Entries)
+                    {
+                        MenuRow detail = new MenuRow(item);
+                        detail.SetBounds(Theme.S(40), Theme.S(8 + slot * RowPitch),
+                                         rowWidth - Theme.S(24), Theme.S(62));
+                        detail.Toggled += RowToggled;
+                        detail.DoubleClick += RowDoubleClick;
+                        detail.MouseWheel += ForwardWheel;
+                        created.Add(detail);
+                        rows.Add(detail);
+                        slot++;
+                    }
+                }
             }
+            else
+            {
+                lastGroupCount = 0;
+                foreach (ContextMenuItem item in visible)
+                {
+                    MenuRow row = new MenuRow(item);
+                    row.SetBounds(Theme.S(16), Theme.S(8 + slot * RowPitch),
+                                  rowWidth, Theme.S(62));
+                    row.Toggled += RowToggled;
+                    row.DoubleClick += RowDoubleClick;
+                    row.MouseWheel += ForwardWheel;
+                    created.Add(row);
+                    rows.Add(row);
+                    slot++;
+                }
+            }
+
             // One AddRange instead of N Add calls: N layout notifications per
             // repaint were a large part of the resize stutter.
-            if (created.Length > 0) rowsBox.Controls.AddRange(created);
+            if (created.Count > 0) rowsBox.Controls.AddRange(created.ToArray());
             rowsBox.Height = Math.Max(listHost.ClientSize.Height,
-                                      Theme.S(16 + visible.Count * RowPitch + 12));
+                                      Theme.S(16 + slot * RowPitch + 12));
             rowsBox.ResumeLayout(false);
             listHost.AutoScrollPosition = new Point(0, 0);
 
@@ -931,11 +989,50 @@ namespace ContextMenuCleaner.UI
             rowsBox.Width = listHost.ClientSize.Width;
             int finalWidth = Math.Max(Theme.S(220), rowsBox.Width - Theme.S(32));
             if (finalWidth != rowWidth)
-                foreach (MenuRow row in rows) row.Width = finalWidth;
+            {
+                foreach (Control row in rows)
+                    row.Width = (groupBySoftware && row is MenuRow)
+                                    ? finalWidth - Theme.S(24) : finalWidth;
+            }
             lastRowWidth = finalWidth;
 
             UpdateNavCounts();
             UpdateFooter();
+        }
+
+        private void GroupToggled(object sender, EventArgs e)
+        {
+            // A group toggle changes every underlying item; repaint visible cards
+            // (including expanded detail rows) so tri-state checkboxes stay honest.
+            foreach (Control row in rows) row.Invalidate();
+            UpdateFooter();
+        }
+
+        private void GroupExpandToggled(object sender, EventArgs e)
+        {
+            SoftwareRow head = (SoftwareRow)sender;
+            if (head.Expanded) expandedGroups.Add(head.Group.Key);
+            else expandedGroups.Remove(head.Group.Key);
+            RefreshList();
+        }
+
+        private void GroupDetailRequested(object sender, EventArgs e)
+        {
+            SoftwareRow head = (SoftwareRow)sender;
+            ShowSoftwareDetail(head.Group);
+        }
+
+        private void ShowSoftwareDetail(SoftwareGroup software)
+        {
+            using (SoftwareDetailDialog dialog = new SoftwareDetailDialog(
+                       software, delegate
+                       {
+                           foreach (Control row in rows) row.Invalidate();
+                           UpdateFooter();
+                       }))
+            {
+                dialog.ShowDialog(this);
+            }
         }
 
         private void RowToggled(object sender, EventArgs e)
@@ -961,16 +1058,18 @@ namespace ContextMenuCleaner.UI
             MenuRow row = sender as MenuRow;
             if (row == null) return;
             ContextMenuItem item = row.Item;
-            MessageBox.Show(this,
-                "名称：" + item.Name + "\n" +
-                "厂商：" + (string.IsNullOrEmpty(item.Publisher) ? "未知" : item.Publisher) + "\n" +
-                "类型：" + item.KindText + "\n" +
-                "作用域：" + item.ScopeText + "\n" +
-                "注册表：" + item.Hive + "\\" + item.RegistryPath + "\n" +
-                "CLSID：" + item.Clsid + "\n" +
-                "程序文件：" + item.BinaryPath + "\n" +
-                "状态：" + (item.IsHidden ? "已隐藏（可恢复）" : "正常显示"),
-                "菜单项详情", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            // Reuse the product detail dialog for a single registration point.
+            SoftwareGroup single = new SoftwareGroup();
+            single.Key = SoftwareGroup.MakeKey(item);
+            single.Name = item.Name;
+            single.Publisher = item.Publisher;
+            single.BinaryPath = item.BinaryPath;
+            single.Clsid = item.Clsid;
+            single.IconImage = item.IconImage;
+            single.IsSystem = item.IsSystem;
+            single.NeedsAdmin = item.NeedsAdmin;
+            single.Entries.Add(item);
+            ShowSoftwareDetail(single);
         }
 
         private void UpdateFooter()
@@ -986,8 +1085,11 @@ namespace ContextMenuCleaner.UI
                 if (item.IsHidden) hidden++;
                 if (item.IsHidden && item.Checked) hiddenSelected++;
             }
-            statusText = "共 " + allItems.Count + " 项  ·  当前显示 " + rows.Count +
-                         " 项  ·  已选 " + selected + " 项  ·  已隐藏 " + hidden + " 项" +
+            string shown = groupBySoftware
+                ? "当前显示 " + lastGroupCount + " 个软件 / " + lastVisibleCount + " 处注册"
+                : "当前显示 " + rows.Count + " 项";
+            statusText = "共 " + allItems.Count + " 项  ·  " + shown +
+                         "  ·  已选 " + selected + " 项  ·  已隐藏 " + hidden + " 项" +
                          (scan != null && scan.Warnings.Count > 0
                              ? "  ·  扫描提示 " + scan.Warnings.Count + " 条" : "");
             footer.Invalidate();
@@ -1314,7 +1416,7 @@ namespace ContextMenuCleaner.UI
                                    Theme.Ink, Theme.PrimarySoft);
                     Theme.DrawSparkle(e.Graphics, 386, 40, 10, Theme.Accent);
                 }
-                Theme.DrawText(e.Graphics, "whack-a-menu  ·  v1.6.0  ·  PolyForm NC",
+                Theme.DrawText(e.Graphics, "whack-a-menu  ·  v1.7.0  ·  PolyForm NC",
                                Theme.MakeFont(8.5f), Theme.TextMuted, new Rectangle(128, 60, 260, 20));
                 if (Theme.Quirky)
                     Theme.DrawText(e.Graphics, "Nine lives, zero patience.",

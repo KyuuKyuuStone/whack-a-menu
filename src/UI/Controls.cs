@@ -514,4 +514,166 @@ namespace ContextMenuCleaner.UI
             if (Toggled != null) Toggled(this, EventArgs.Empty);
         }
     }
+
+    // ------------------------------------------------------------- software card
+
+    /// <summary>
+    /// Aggregated card for "按软件" view: one product with all of its registration
+    /// points. Checkbox selects the whole group, the body opens the detail dialog,
+    /// and the arrow expands the individual registry entries.
+    /// </summary>
+    public class SoftwareRow : Control
+    {
+        public SoftwareGroup Group;
+        public bool Expanded;
+        public event EventHandler Toggled;
+        public event EventHandler ExpandToggled;
+        public event EventHandler DetailRequested;
+
+        private bool hovered;
+
+        public SoftwareRow(SoftwareGroup group)
+        {
+            Theme.EnableDoubleBuffer(this);
+            Group = group;
+            Height = Theme.S(62);
+            BackColor = Color.Transparent;
+            Cursor = Cursors.Hand;
+        }
+
+        private static int DetailX(int w) { return w - 126; }
+        private static int ExpX(int w) { return w - 48; }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            Theme.Prepare(e.Graphics);
+            Graphics g = e.Graphics;
+            int w = Theme.LW(this), h = Theme.LH(this);
+            int detailX = DetailX(w), expX = ExpX(w);
+            bool all = Group.Checked;
+            int some = Group.CheckedCount;
+            bool partial = some > 0 && !all;
+
+            Rectangle card = new Rectangle(0, 2, w - 1, h - 4);
+            Color background = all ? Theme.PrimarySoft
+                             : (partial ? Theme.WarningSoft
+                                        : (hovered ? Theme.Hover : Theme.Surface));
+            Color border = all ? Theme.PrimaryDark
+                           : (partial ? Theme.Warning : Theme.RowBorder);
+            Theme.FillRound(g, card, 12, background, border, all ? 1.9f : 1.1f);
+
+            // Tri-state checkbox: checked / partially checked / empty.
+            Rectangle box = new Rectangle(16, (h - 18) / 2, 18, 18);
+            Theme.FillRound(g, box, 5,
+                            (all || partial) ? Theme.Primary : Theme.Surface,
+                            (all || partial) ? Theme.Outline : Theme.Border, 1.5f);
+            using (Pen pen = new Pen(Theme.Ink, 2.2f))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                if (all)
+                {
+                    g.DrawLine(pen, box.X + 4, box.Y + 9, box.X + 8, box.Y + 13);
+                    g.DrawLine(pen, box.X + 8, box.Y + 13, box.X + 14, box.Y + 5);
+                }
+                else if (partial)
+                {
+                    g.DrawLine(pen, box.X + 4, box.Y + 9, box.X + 14, box.Y + 9);
+                }
+            }
+
+            if (Group.IconImage != null)
+                g.DrawImage(Group.IconImage, new Rectangle(46, (h - 32) / 2, 32, 32));
+
+            int textX = 90;
+            int nameWidth = Math.Max(90, detailX - textX - 14);
+            Font nameFont = Theme.MakeFont(10f, true);
+            Theme.DrawText(g, Group.Name, nameFont, Theme.Text,
+                           new Rectangle(textX, 5, nameWidth, 28));
+            int realNameWidth = Theme.Measure(Group.Name, nameFont).Width;
+
+            int bx = textX + Math.Min(realNameWidth, nameWidth) + 10;
+            Font badgeFont = Theme.MakeFont(8f);
+            int limit = detailX - 12;
+            bx += DrawBadge(g, bx, 9, badgeFont, limit, Group.Count + " 处注册",
+                            Theme.PrimaryDark, Theme.PrimarySoft);
+            bx += DrawBadge(g, bx, 9, badgeFont, limit,
+                            Group.IsSystem ? "系统" : "第三方",
+                            Group.IsSystem ? Theme.TextMuted : Theme.PrimaryDark,
+                            Group.IsSystem ? Theme.NeutralSoft : Theme.PrimarySoft);
+            if (Group.NeedsAdmin && !MenuManager.IsAdministrator)
+                DrawBadge(g, bx, 9, badgeFont, limit, "需管理员", Theme.Danger, Theme.DangerSoft);
+
+            string second = (string.IsNullOrEmpty(Group.Publisher)
+                                ? "厂商未知" : Group.Publisher) +
+                            "   ·   " + Group.ScopeSummary;
+            if (string.IsNullOrEmpty(Group.BinaryPath)) second += "   ·   未找到程序文件";
+            Theme.DrawText(g, second, Theme.MakeFont(8.5f), Theme.TextMuted,
+                           new Rectangle(textX, 31, Math.Max(60, detailX - textX - 14), 24));
+
+            // Detail button + expand arrow are always visible on the right edge.
+            Rectangle detail = new Rectangle(detailX, 16, 70, 30);
+            Theme.FillRound(g, detail, 15, Theme.Surface, Theme.Border, 1.2f);
+            Theme.DrawCentered(g, "详情", Theme.MakeFont(8.5f, true), Theme.Text, detail);
+
+            Rectangle arrow = new Rectangle(expX, 16, 32, 30);
+            Theme.FillRound(g, arrow, 9, Theme.PrimarySoft, Theme.Border, 1.2f);
+            using (SolidBrush brush = new SolidBrush(Theme.PrimaryDark))
+            {
+                if (Expanded)
+                {
+                    g.FillPolygon(brush, new Point[]
+                    {
+                        new Point(expX + 8, 28), new Point(expX + 24, 28), new Point(expX + 16, 37)
+                    });
+                }
+                else
+                {
+                    g.FillPolygon(brush, new Point[]
+                    {
+                        new Point(expX + 12, 22), new Point(expX + 12, 40), new Point(expX + 22, 31)
+                    });
+                }
+            }
+        }
+
+        private static int DrawBadge(Graphics g, int x, int y, Font font, int limit,
+                                     string text, Color foreground, Color background)
+        {
+            int width = Theme.Measure(text, font).Width + 14;
+            if (x + width + 8 > limit) return 0;
+            Theme.DrawPill(g, x, y, text, font, foreground, background);
+            return width + 6;
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { hovered = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hovered = false; Invalidate(); base.OnMouseLeave(e); }
+
+        protected override void OnMouseDown(MouseEventArgs e)
+        {
+            base.OnMouseDown(e);
+            if (e.Button != MouseButtons.Left) return;
+            int lx = (int)(e.X / Theme.Scale);
+            int w = Theme.LW(this);
+
+            if (lx < 40)
+            {
+                bool next = !Group.Checked;
+                Group.Checked = next;
+                Invalidate();
+                if (Toggled != null) Toggled(this, EventArgs.Empty);
+                return;
+            }
+            if (lx >= ExpX(w) - 4)
+            {
+                Expanded = !Expanded;
+                Invalidate();
+                if (ExpandToggled != null) ExpandToggled(this, EventArgs.Empty);
+                return;
+            }
+            // Clicking the detail button or anywhere on the card body opens
+            // the product detail dialog -- that is the point of this view.
+            if (DetailRequested != null) DetailRequested(this, EventArgs.Empty);
+        }
+    }
 }
